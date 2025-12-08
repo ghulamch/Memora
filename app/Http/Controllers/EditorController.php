@@ -6,6 +6,7 @@ use App\Models\Photo;
 use App\Models\Template;
 use Illuminate\Http\Request;
 use App\Models\Lut;
+use App\Models\AppSetting;
 
 class EditorController extends Controller
 {
@@ -29,8 +30,15 @@ class EditorController extends Controller
             return $template;
         });
         
-        $luts = Lut::active()->get();
 
-        return view('editor2', compact('photos', 'templates', 'luts'));
+        // Check if LUT filter is enabled
+        $lutFilterEnabled = AppSetting::get('lut_filter_enabled', true);
+
+        // Only fetch LUTs if feature is enabled
+        $luts = $lutFilterEnabled 
+            ? Lut::where('is_active', true)->orderBy('name')->get()
+            : collect([]);
+
+        return view('editor2', compact('photos', 'templates', 'luts', 'lutFilterEnabled'));
     }
 }

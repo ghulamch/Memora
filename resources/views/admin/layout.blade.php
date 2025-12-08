@@ -53,6 +53,10 @@
                     <i class="fas fa-key"></i>
                     <span>Token</span>
                 </a>
+                 <a href="{{ route('admin.settings') }}" class="nav-link {{ request()->routeIs('admin.setting.*') ? 'active' : '' }}">
+                    <i class="fas fa-gear"></i>
+                    <span>Setting</span>
+                </a>
             </div>
             
             <div class="admin-nav-actions">

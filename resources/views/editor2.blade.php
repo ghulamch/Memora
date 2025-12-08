@@ -62,6 +62,7 @@
                 </div>
             </div>
 
+            @if($lutFilterEnabled ?? true)
             <!-- LUT Filter Selection -->
             <div class="sidebar-section">
                 <h3 class="sidebar-title">
@@ -107,6 +108,7 @@
                 </div>
             </div>
 
+            @endif
             <!-- Template Selection -->
             <div class="sidebar-section">
                 <h3 class="sidebar-title">

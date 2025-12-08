@@ -26,7 +26,17 @@ class LutController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'lut_file' => 'required|file|max:2048',
+            'lut_file' => [
+                'required',
+                'file',
+                'max:2048',
+                function ($attribute, $value, $fail) {
+                    $extension = strtolower($value->getClientOriginalExtension());
+                    if (!in_array($extension, ['cube', '3dl', 'txt'])) {
+                        $fail('File harus berformat .cube, .3dl, atau .txt');
+                    }
+                },
+            ],
             'thumbnail' => 'nullable|image|max:2048',
         ]);
 
@@ -37,9 +47,18 @@ class LutController extends Controller
                 'is_active' => $request->has('is_active'),
             ];
 
-            // Upload LUT file
+            // Upload LUT file dengan ekstensi asli
             if ($request->hasFile('lut_file')) {
-                $data['file_path'] = $request->file('lut_file')->store('luts', 'public');
+                $file = $request->file('lut_file');
+                $originalExtension = $file->getClientOriginalExtension();
+                
+                // Jika file upload tanpa ekstensi atau ekstensi salah, paksa jadi .cube
+                if (empty($originalExtension) || !in_array(strtolower($originalExtension), ['cube', '3dl', 'txt'])) {
+                    $originalExtension = 'cube';
+                }
+                
+                $filename = uniqid() . '.' . $originalExtension;
+                $data['file_path'] = $file->storeAs('luts', $filename, 'public');
             }
 
             // Upload thumbnail
@@ -75,7 +94,19 @@ class LutController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'lut_file' => 'nullable|file|mimes:cube,3dl|max:2048',
+            'lut_file' => [
+                'nullable',
+                'file',
+                'max:2048',
+                function ($attribute, $value, $fail) {
+                    if ($value) {
+                        $extension = strtolower($value->getClientOriginalExtension());
+                        if (!in_array($extension, ['cube', '3dl', 'txt'])) {
+                            $fail('File harus berformat .cube, .3dl, atau .txt');
+                        }
+                    }
+                },
+            ],
             'thumbnail' => 'nullable|image|max:2048',
         ]);
 
@@ -86,13 +117,23 @@ class LutController extends Controller
                 'is_active' => $request->has('is_active'),
             ];
 
-            // Upload new LUT file
+            // Upload new LUT file dengan ekstensi asli
             if ($request->hasFile('lut_file')) {
                 // Delete old file
-                if ($lut->file_path && Storage::exists($lut->file_path)) {
-                    Storage::delete($lut->file_path);
+                if ($lut->file_path && Storage::disk('public')->exists($lut->file_path)) {
+                    Storage::disk('public')->delete($lut->file_path);
                 }
-                $data['file_path'] = $request->file('lut_file')->store('luts', 'public');
+                
+                $file = $request->file('lut_file');
+                $originalExtension = $file->getClientOriginalExtension();
+                
+                // Jika file upload tanpa ekstensi atau ekstensi salah, paksa jadi .cube
+                if (empty($originalExtension) || !in_array(strtolower($originalExtension), ['cube', '3dl', 'txt'])) {
+                    $originalExtension = 'cube';
+                }
+                
+                $filename = uniqid() . '.' . $originalExtension;
+                $data['file_path'] = $file->storeAs('luts', $filename, 'public');
             }
 
             // Upload new thumbnail
@@ -128,11 +169,11 @@ class LutController extends Controller
     {
         try {
             // Delete files
-            if ($lut->file_path && Storage::exists($lut->file_path)) {
-                Storage::delete($lut->file_path);
+            if ($lut->file_path && Storage::disk('public')->exists($lut->file_path)) {
+                Storage::disk('public')->delete($lut->file_path);
             }
-            if ($lut->thumbnail && Storage::exists($lut->thumbnail)) {
-                Storage::delete($lut->thumbnail);
+            if ($lut->thumbnail && Storage::disk('public')->exists($lut->thumbnail)) {
+                Storage::disk('public')->delete($lut->thumbnail);
             }
 
             $lut->delete();
@@ -160,5 +201,81 @@ class LutController extends Controller
             'success' => true,
             'is_active' => $lut->is_active,
         ]);
+    }
+
+    /**
+     * Memperbaiki ekstensi file LUT yang salah (.txt atau .tif menjadi .cube)
+     * Route: GET /admin/luts/fix-extensions
+     */
+    public function fixFileExtensions()
+    {
+        try {
+            $luts = Lut::whereNotNull('file_path')->get();
+            $fixed = 0;
+            $errors = [];
+
+            foreach ($luts as $lut) {
+                $oldPath = $lut->file_path;
+                
+                // Skip jika sudah .cube atau .3dl
+                if (preg_match('/\.(cube|3dl)$/i', $oldPath)) {
+                    continue;
+                }
+
+                // Check apakah file ada
+                if (!Storage::disk('public')->exists($oldPath)) {
+                    $errors[] = "File tidak ditemukan: {$oldPath}";
+                    continue;
+                }
+
+                // Baca beberapa baris pertama untuk validasi apakah ini LUT file
+                $content = Storage::disk('public')->get($oldPath);
+                $firstLines = substr($content, 0, 200);
+                
+                // Cek apakah ini valid LUT file
+                if (!preg_match('/LUT_3D_SIZE|LUT_1D_SIZE/i', $firstLines)) {
+                    $errors[] = "Bukan file LUT: {$oldPath}";
+                    continue;
+                }
+
+                // Generate nama file baru dengan ekstensi .cube
+                $newPath = preg_replace('/\.(txt|tif|tiff)$/i', '.cube', $oldPath);
+                
+                // Jika tidak ada ekstensi, tambahkan .cube
+                if ($newPath === $oldPath) {
+                    $newPath = $oldPath . '.cube';
+                }
+
+                // Rename file
+                if (Storage::disk('public')->move($oldPath, $newPath)) {
+                    $lut->update(['file_path' => $newPath]);
+                    $fixed++;
+                    Log::info("LUT file extension fixed", [
+                        'lut_id' => $lut->id,
+                        'old_path' => $oldPath,
+                        'new_path' => $newPath,
+                    ]);
+                } else {
+                    $errors[] = "Gagal rename: {$oldPath} -> {$newPath}";
+                }
+            }
+
+            $message = "Berhasil memperbaiki {$fixed} file LUT.";
+            if (!empty($errors)) {
+                $message .= " Errors: " . implode(', ', $errors);
+            }
+
+            return redirect()->route('admin.luts.index')
+                ->with('success', $message);
+
+        } catch (\Exception $e) {
+            Log::error('Fix LUT extensions failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return redirect()->route('admin.luts.index')
+                ->with('error', 'Gagal memperbaiki ekstensi file: ' . $e->getMessage());
+        }
     }
 }

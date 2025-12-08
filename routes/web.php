@@ -8,6 +8,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\LutController;
 use App\Http\Controllers\LandingController;
+use App\Http\Controllers\Admin\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -62,6 +63,21 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
     // LUTs Management
     Route::resource('luts', LutController::class);
     Route::post('/luts/{lut}/toggle', [LutController::class, 'toggle'])->name('luts.toggle');
+
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
+    Route::post('/settings/update', [SettingsController::class, 'update'])->name('settings.update');
+    Route::post('/settings/toggle', [SettingsController::class, 'toggle'])->name('settings.toggle');
+    Route::get('/settings/api', [SettingsController::class, 'getSettings'])->name('settings.api');
+        Route::post('/cache/clear', function () {
+        \Illuminate\Support\Facades\Artisan::call('cache:clear');
+        \Illuminate\Support\Facades\Artisan::call('view:clear');
+        \Illuminate\Support\Facades\Artisan::call('route:clear');
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'All cache cleared successfully'
+        ]);
+    })->name('admin.cache.clear');
 });
 
 // Authentication routes (Laravel Breeze/Fortify)

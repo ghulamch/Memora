@@ -15,8 +15,16 @@ return new class extends Migration
             $table->string('thumbnail')->nullable(); // preview image
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
-            $table->integer('usage_count')->default(0);
+
+             // Add usage tracking columns
+            $table->unsignedBigInteger('usage_count')->default(0);
+            $table->timestamp('last_used_at')->nullable();
             $table->timestamps();
+
+            
+            // Add index for better query performance
+            $table->index('usage_count');
+            $table->index('last_used_at');
         });
     }
 

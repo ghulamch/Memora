@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\LandingController;
+use App\Http\Controllers\Api\LutApiController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -65,6 +66,21 @@ Route::middleware(['api.token'])->group(function () {
     // Body: { "session_code": "SESSION-20241121-001" }
     Route::post('/photos/bulk-delete-session', [PhotoController::class, 'bulkDeleteBySession']);
     
+});
+
+Route::prefix('luts')->name('api.luts.')->group(function () {
+    
+    // Get all active LUTs
+    Route::get('/', [LutApiController::class, 'index'])->name('index');
+    
+    // Get single LUT
+    Route::get('/{lut}', [LutApiController::class, 'show'])->name('show');
+    
+    // Increment usage count (YANG DIPERLUKAN)
+    Route::post('/{lut}/increment-usage', [LutApiController::class, 'incrementUsage'])->name('increment-usage');
+    
+    // Get statistics
+    Route::get('/statistics/summary', [LutApiController::class, 'statistics'])->name('statistics');
 });
 
 // Health check (no auth required)
