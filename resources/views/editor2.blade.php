@@ -62,7 +62,6 @@
                 </div>
             </div>
 
-            @if($lutFilterEnabled ?? true)
             <!-- LUT Filter Selection -->
             <div class="sidebar-section">
                 <h3 class="sidebar-title">
@@ -108,7 +107,6 @@
                 </div>
             </div>
 
-            @endif
             <!-- Template Selection -->
             <div class="sidebar-section">
                 <h3 class="sidebar-title">
@@ -1648,6 +1646,11 @@ function editorApp() {
         },
 
 
+
+        // ========================================
+        // SHARE RESULT - Direct Share from Canvas
+        // Like Web Share API example - NO download needed!
+        // ========================================
         async shareResult() {
             if (!this.selectedTemplate) {
                 alert('Pilih template terlebih dahulu');
@@ -1780,172 +1783,173 @@ function editorApp() {
                 
                 this.updateLoadingModal('Menyiapkan untuk dibagikan...', 95);
                 
-                // Share dengan native API atau modal
+                // ========================================
+                // DIRECT SHARE - Like Web Share API Example
+                // NO download, langsung dari canvas!
+                // ========================================
                 canvas.toBlob(async (blob) => {
+                    if (!blob) {
+                        this.hideLoadingModal();
+                        alert('Gagal membuat gambar');
+                        return;
+                    }
+                    
+                    // Create File from blob
                     const fileName = this.selectedLut 
-                        ? `foto-${this.selectedLut.name}-${Date.now()}.png`
-                        : `foto-${Date.now()}.png`;
+                        ? `memora-${this.selectedLut.name}-${Date.now()}.png`
+                        : `memora-photo-${Date.now()}.png`;
                     
                     const file = new File([blob], fileName, { type: 'image/png' });
+                    const files = [file];
                     
-                    // Cek apakah browser support native share
-                    const canShareFiles = navigator.share && navigator.canShare && navigator.canShare({ files: [file] });
+                    // Hide loading
+                    this.hideLoadingModal();
                     
-                    if (canShareFiles) {
-                        try {
-                            // Hide loading modal
-                            this.hideLoadingModal();
-                            
-                            console.log('Attempting native share...');
-                            
-                            // NATIVE SHARE - Popup akan muncul langsung!
-                            await navigator.share({
-                                files: [file],
-                                title: 'Foto dari Memora',
-                                text: 'Lihat foto saya!'
-                            });
-                            
-                            console.log('✅ Share successful!');
-                            
-                        } catch (error) {
-                            console.error('Share error:', error.name, error.message);
-                            
-                            // User cancelled - OK, no action needed
-                            if (error.name === 'AbortError') {
-                                console.log('User cancelled share');
-                                return;
-                            }
-                            
-                            // Error lain - tampilkan modal fallback
-                            this.showShareModal(blob, fileName);
-                        }
-                    } else {
-                        // Browser tidak support native share - tampilkan modal dengan opsi social media
-                        this.hideLoadingModal();
-                        this.showShareModal(blob, fileName);
+                    // Check if Web Share API is supported
+                    if (!navigator.canShare) {
+                        console.log('❌ Web Share API not supported');
+                        this.showShareFallback(blob, fileName);
+                        return;
                     }
+                    
+                    // Check if we can share these files
+                    if (!navigator.canShare({ files })) {
+                        console.log('⚠️ Cannot share files on this system');
+                        this.showShareFallback(blob, fileName);
+                        return;
+                    }
+                    
+                    // Try to share!
+                    try {
+                        console.log('🚀 Sharing image...');
+                        
+                        await navigator.share({
+                            files: files,
+                            title: 'Foto dari Memora',
+                            text: 'Lihat hasil editan foto saya!'
+                        });
+                        
+                        console.log('✅ Shared!');
+                        this.showNotification('Berhasil dibagikan!', 'success');
+                        
+                    } catch (error) {
+                        console.error('❌ Share error:', error.message);
+                        
+                        // User cancelled - it's OK
+                        if (error.name === 'AbortError') {
+                            console.log('ℹ️ User cancelled');
+                            return;
+                        }
+                        
+                        // Other errors - show fallback
+                        console.log('⚠️ Showing fallback...');
+                        this.showShareFallback(blob, fileName);
+                    }
+                    
                 }, 'image/png', 1.0);
                 
             } catch (error) {
-                console.error('Share error:', error);
+                console.error('💥 Error:', error);
                 this.hideLoadingModal();
                 alert('Gagal membagikan gambar: ' + error.message);
             }
         },
         
-        // Tampilkan modal share dengan social media options
-        showShareModal(blob, fileName) {
-            // Download file dulu
+        // ========================================
+        // SIMPLE SHARE FALLBACK
+        // ========================================
+        showShareFallback(blob, fileName) {
+            // Download file
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.download = fileName;
             link.href = url;
             link.click();
             
-            // Buat modal HTML
-            const modal = document.createElement('div');
-            modal.className = 'share-modal';
-            modal.innerHTML = `
-                <div class="share-modal-overlay"></div>
-                <div class="share-modal-content">
-                    <div class="share-modal-header">
-                        <h3><i class="fas fa-share-nodes"></i> Bagikan Foto</h3>
-                        <button class="share-modal-close">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    <div class="share-modal-body">
-                        <p class="share-modal-message">
-                            <i class="fas fa-check-circle"></i>
-                            Foto berhasil didownload! Pilih platform untuk berbagi:
-                        </p>
-                        <div class="share-buttons">
-                            <a href="whatsapp://send?text=${encodeURIComponent('Lihat foto saya dari Memora! ' + window.location.origin)}" 
-                               class="share-btn share-btn-whatsapp">
-                                <i class="fab fa-whatsapp"></i>
-                                <span>WhatsApp</span>
-                            </a>
-                            <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="share-btn share-btn-facebook">
-                                <i class="fab fa-facebook-f"></i>
-                                <span>Facebook</span>
-                            </a>
-                            <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Lihat foto saya dari Memora!')}&url=${encodeURIComponent(window.location.href)}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="share-btn share-btn-twitter">
-                                <i class="fab fa-twitter"></i>
-                                <span>Twitter</span>
-                            </a>
-                            <a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="share-btn share-btn-linkedin">
-                                <i class="fab fa-linkedin-in"></i>
-                                <span>LinkedIn</span>
-                            </a>
-                            <a href="https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent('Lihat foto saya dari Memora!')}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="share-btn share-btn-telegram">
-                                <i class="fab fa-telegram-plane"></i>
-                                <span>Telegram</span>
-                            </a>
-                            <a href="mailto:?subject=${encodeURIComponent('Foto dari Memora')}&body=${encodeURIComponent('Lihat foto saya! ' + window.location.href)}" 
-                               class="share-btn share-btn-email">
-                                <i class="fas fa-envelope"></i>
-                                <span>Email</span>
-                            </a>
-                            <button class="share-btn share-btn-copy" id="copyLinkBtn">
-                                <i class="fas fa-link"></i>
-                                <span>Salin Link</span>
-                            </button>
-                        </div>
-                        <div class="share-modal-tip">
-                            <i class="fas fa-info-circle"></i>
-                            <small>Foto sudah didownload ke perangkat Anda. Upload foto tersebut saat berbagi ke platform pilihan.</small>
-                        </div>
-                    </div>
-                </div>
+            // Show notification
+            this.showNotification('Foto berhasil didownload! Silakan share manual.', 'info');
+            
+            // Cleanup
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+        
+        // ========================================
+        // SIMPLE NOTIFICATION
+        // ========================================
+        showNotification(message, type = 'success') {
+            // Remove existing notification
+            const existing = document.querySelector('.share-notification');
+            if (existing) existing.remove();
+            
+            // Create notification
+            const notification = document.createElement('div');
+            notification.className = `share-notification share-notification-${type}`;
+            
+            const icon = type === 'success' ? 'check-circle' : 'info-circle';
+            const bgColor = type === 'success' 
+                ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                : 'linear-gradient(135deg, #3b82f6, #2563eb)';
+            
+            notification.style.cssText = `
+                position: fixed;
+                top: 100px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                border-radius: 14px;
+                background: ${bgColor};
+                color: white;
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+                z-index: 10001;
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                font-weight: 600;
+                font-size: 0.9375rem;
+                animation: slideInFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             `;
             
-            document.body.appendChild(modal);
+            notification.innerHTML = `
+                <i class="fas fa-${icon}" style="font-size: 1.25rem;"></i>
+                <span>${message}</span>
+            `;
             
-            // Setup event listeners
-            const overlay = modal.querySelector('.share-modal-overlay');
-            const closeBtn = modal.querySelector('.share-modal-close');
-            const copyBtn = modal.querySelector('#copyLinkBtn');
+            // Add animation
+            if (!document.querySelector('#notificationStyles')) {
+                const style = document.createElement('style');
+                style.id = 'notificationStyles';
+                style.textContent = `
+                    @keyframes slideInFromRight {
+                        from {
+                            opacity: 0;
+                            transform: translateX(100px);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: translateX(0);
+                        }
+                    }
+                    @keyframes slideOutToRight {
+                        from {
+                            opacity: 1;
+                            transform: translateX(0);
+                        }
+                        to {
+                            opacity: 0;
+                            transform: translateX(100px);
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
             
-            const closeModal = () => {
-                modal.remove();
-                URL.revokeObjectURL(url);
-            };
+            document.body.appendChild(notification);
             
-            overlay.addEventListener('click', closeModal);
-            closeBtn.addEventListener('click', closeModal);
-            
-            copyBtn.addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(window.location.href);
-                    copyBtn.innerHTML = '<i class="fas fa-check"></i><span>Tersalin!</span>';
-                    copyBtn.classList.add('success');
-                    setTimeout(() => {
-                        copyBtn.innerHTML = '<i class="fas fa-link"></i><span>Salin Link</span>';
-                        copyBtn.classList.remove('success');
-                    }, 2000);
-                } catch (err) {
-                    console.error('Failed to copy:', err);
-                }
-            });
-            
-            // Cleanup URL setelah 10 detik
+            // Auto remove after 3 seconds
             setTimeout(() => {
-                URL.revokeObjectURL(url);
-            }, 10000);
+                notification.style.animation = 'slideOutToRight 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
         },
-
         // Helper function untuk apply LUT filter
         applyLutFilter(data, lut) {
             // Ini adalah contoh sederhana LUT filter
