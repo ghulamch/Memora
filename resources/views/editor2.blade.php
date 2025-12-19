@@ -1231,6 +1231,10 @@ function editorApp() {
         canvasWidth: 0,
         canvasHeight: 0,
         
+        // ✨ CORS FIX: Image cache untuk menghindari tainted canvas
+        imageCache: {},
+        isPreloading: false,
+        
         init() {
             // Auto select first template if available
             if (this.templates.length > 0) {
@@ -1244,6 +1248,9 @@ function editorApp() {
             window.addEventListener('resize', () => {
                 this.adjustCanvasScale();
             });
+            
+            // ✨ CORS FIX: Preload semua images dengan CORS handling yang benar
+            this.preloadImages();
         },
         
         adjustCanvasScale() {
@@ -1352,6 +1359,93 @@ function editorApp() {
         
         resetZoom() {
             this.adjustCanvasScale();
+        },
+        
+        // ========================================
+        // ✨ CORS FIX: PRELOAD IMAGES
+        // ========================================
+        async preloadImages() {
+            if (this.isPreloading) return;
+            
+            this.isPreloading = true;
+            console.log('🔄 Preloading images untuk CORS handling...');
+            
+            try {
+                // Preload semua photo images
+                const photoPromises = this.photos.map(photo => 
+                    this.loadAndCacheImage(photo.full_url, 'photo')
+                );
+                
+                // Preload semua template backgrounds
+                const templatePromises = this.templates
+                    .filter(template => template.background_url)
+                    .map(template => 
+                        this.loadAndCacheImage(template.background_url, 'frame')
+                    );
+                
+                // Wait for all images to load
+                await Promise.all([...photoPromises, ...templatePromises]);
+                
+                console.log('✅ Semua images berhasil diload!');
+                console.log('📦 Cache size:', Object.keys(this.imageCache).length, 'images');
+                
+            } catch (error) {
+                console.error('❌ Preload error:', error);
+            } finally {
+                this.isPreloading = false;
+            }
+        },
+        
+        // ========================================
+        // ✨ CORS FIX: LOAD & CACHE IMAGE
+        // ========================================
+        async loadAndCacheImage(url, type = 'image') {
+            // Return from cache if already loaded
+            if (this.imageCache[url]) {
+                console.log('♻️ Using cached:', type, url);
+                return this.imageCache[url];
+            }
+            
+            console.log('⬇️ Loading:', type, url);
+            
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                
+                // ⚠️ CRITICAL: Set crossOrigin SEBELUM src
+                // Ini adalah kunci utama solusi CORS!
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = () => {
+                    this.imageCache[url] = img;
+                    console.log('✅', type, 'loaded:', url);
+                    resolve(img);
+                };
+                
+                img.onerror = (error) => {
+                    console.error('❌', type, 'load error:', url, error);
+                    
+                    // Fallback: Try without CORS
+                    console.log('🔄 Trying fallback without CORS...');
+                    const imgFallback = new Image();
+                    
+                    imgFallback.onload = () => {
+                        this.imageCache[url] = imgFallback;
+                        console.log('✅', type, 'loaded (no CORS):', url);
+                        resolve(imgFallback);
+                    };
+                    
+                    imgFallback.onerror = (fallbackError) => {
+                        console.error('❌', type, 'completely failed:', url);
+                        reject(fallbackError);
+                    };
+                    
+                    // No crossOrigin for fallback
+                    imgFallback.src = url;
+                };
+                
+                // ⚠️ CRITICAL: Set src SETELAH crossOrigin
+                img.src = url;
+            });
         },
         
         // Loading Modal Helper Functions
@@ -1483,21 +1577,14 @@ function editorApp() {
                     
                     console.log('Loading photo for slot:', slot.id, photo.full_url);
                     
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
+                    // ✨ CORS FIX: Gunakan cached image
+                    let img = this.imageCache[photo.full_url];
                     
-                    // Wait for image to load
-                    await new Promise((resolve, reject) => {
-                        img.onload = () => {
-                            console.log('Photo loaded:', slot.id);
-                            resolve();
-                        };
-                        img.onerror = (error) => {
-                            console.error('Photo load error:', slot.id, error);
-                            reject(error);
-                        };
-                        img.src = photo.full_url;
-                    });
+                    // Fallback jika belum ada di cache
+                    if (!img) {
+                        console.warn('⚠️ Image not in cache, loading:', photo.full_url);
+                        img = await this.loadAndCacheImage(photo.full_url, 'photo');
+                    }
                     
                     // Save context state
                     ctx.save();
@@ -1589,20 +1676,14 @@ function editorApp() {
                     this.updateLoadingModal('Memuat frame...', 80);
                     console.log('Loading frame:', this.selectedTemplate.background_url);
                     
-                    const frameImg = new Image();
-                    frameImg.crossOrigin = 'anonymous';
+                    // ✨ CORS FIX: Gunakan cached frame
+                    let frameImg = this.imageCache[this.selectedTemplate.background_url];
                     
-                    await new Promise((resolve, reject) => {
-                        frameImg.onload = () => {
-                            console.log('Frame loaded');
-                            resolve();
-                        };
-                        frameImg.onerror = (error) => {
-                            console.error('Frame load error:', error);
-                            reject(error);
-                        };
-                        frameImg.src = this.selectedTemplate.background_url;
-                    });
+                    // Fallback jika belum ada di cache
+                    if (!frameImg) {
+                        console.warn('⚠️ Frame not in cache, loading:', this.selectedTemplate.background_url);
+                        frameImg = await this.loadAndCacheImage(this.selectedTemplate.background_url, 'frame');
+                    }
                     
                     // Draw frame dengan full resolution
                     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
@@ -1688,14 +1769,14 @@ function editorApp() {
                     const progress = 10 + Math.round((processedSlots / totalSlots) * 40);
                     this.updateLoadingModal(`Memuat foto ${processedSlots + 1}/${totalSlots}...`, progress);
                     
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
+                    // ✨ CORS FIX: Gunakan cached image
+                    let img = this.imageCache[photo.full_url];
                     
-                    await new Promise((resolve, reject) => {
-                        img.onload = resolve;
-                        img.onerror = reject;
-                        img.src = photo.full_url;
-                    });
+                    // Fallback jika belum ada di cache
+                    if (!img) {
+                        console.warn('⚠️ Image not in cache, loading:', photo.full_url);
+                        img = await this.loadAndCacheImage(photo.full_url, 'photo');
+                    }
                     
                     ctx.save();
                     
@@ -1766,14 +1847,15 @@ function editorApp() {
                 // LAYER 3: Render frame original
                 if (this.selectedTemplate.background_url) {
                     this.updateLoadingModal('Memuat frame...', 80);
-                    const frameImg = new Image();
-                    frameImg.crossOrigin = 'anonymous';
                     
-                    await new Promise((resolve, reject) => {
-                        frameImg.onload = resolve;
-                        frameImg.onerror = reject;
-                        frameImg.src = this.selectedTemplate.background_url;
-                    });
+                    // ✨ CORS FIX: Gunakan cached frame
+                    let frameImg = this.imageCache[this.selectedTemplate.background_url];
+                    
+                    // Fallback jika belum ada di cache
+                    if (!frameImg) {
+                        console.warn('⚠️ Frame not in cache, loading:', this.selectedTemplate.background_url);
+                        frameImg = await this.loadAndCacheImage(this.selectedTemplate.background_url, 'frame');
+                    }
                     
                     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
                     this.updateLoadingModal('Frame berhasil dimuat!', 90);
