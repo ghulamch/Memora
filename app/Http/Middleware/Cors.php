@@ -5,25 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 
-/**
- * CORS Middleware untuk mengatasi masalah Canvas Tainted
- * 
- * Middleware ini menambahkan headers CORS yang diperlukan agar
- * browser mengizinkan canvas untuk menggunakan gambar dari domain yang sama
- * atau berbeda tanpa menjadi "tainted".
- * 
- * INSTALASI:
- * 1. Simpan file ini di: app/Http/Middleware/Cors.php
- * 2. Register di app/Http/Kernel.php:
- *    - Di $middleware (global) ATAU
- *    - Di $middlewareGroups['web']
- * 
- * Example di Kernel.php:
- * protected $middleware = [
- *     // ...
- *     \App\Http\Middleware\Cors::class,
- * ];
- */
+
 class Cors
 {
     /**
