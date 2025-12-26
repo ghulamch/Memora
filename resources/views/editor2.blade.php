@@ -1297,8 +1297,18 @@ function editorApp() {
             template.slots.forEach((slot, index) => {
                 if (this.photos[index]) {
                     this.slotPhotos[slot.id] = this.photos[index];
+                    
+                    // ✨ PRELOAD: Cache image immediately saat auto-fill
+                    if (!this.imageCache[this.photos[index].full_url]) {
+                        this.loadAndCacheImage(this.photos[index].full_url, 'photo');
+                    }
                 }
             });
+            
+            // ✨ PRELOAD: Cache template background immediately
+            if (template.background_url && !this.imageCache[template.background_url]) {
+                this.loadAndCacheImage(template.background_url, 'frame');
+            }
             
             // Adjust canvas after template selected
             this.$nextTick(() => {
@@ -1338,6 +1348,11 @@ function editorApp() {
         handleDrop(event, slot) {
             if (this.draggedPhoto) {
                 this.slotPhotos[slot.id] = this.draggedPhoto;
+                
+                // ✨ PRELOAD: Cache image immediately saat di-drop
+                if (!this.imageCache[this.draggedPhoto.full_url]) {
+                    this.loadAndCacheImage(this.draggedPhoto.full_url, 'photo');
+                }
             }
         },
         
@@ -1397,7 +1412,8 @@ function editorApp() {
         },
         
         // ========================================
-        // ✨ CORS FIX: LOAD & CACHE IMAGE
+        // ✨ PRODUCTION-READY: LOAD & CACHE IMAGE WITH BLOB
+        // Menggunakan fetch + blob untuk menghindari CORS issues di production
         // ========================================
         async loadAndCacheImage(url, type = 'image') {
             // Return from cache if already loaded
@@ -1408,44 +1424,204 @@ function editorApp() {
             
             console.log('⬇️ Loading:', type, url);
             
+            // STRATEGY 1: Fetch as Blob (Best for CORS in production)
+            try {
+                console.log('📥 Trying fetch method (blob)...');
+                
+                const response = await fetch(url, {
+                    mode: 'cors',
+                    credentials: 'omit',
+                    cache: 'force-cache'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const blob = await response.blob();
+                const objectURL = URL.createObjectURL(blob);
+                
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    
+                    img.onload = () => {
+                        // Store the image in cache BEFORE revoking URL
+                        this.imageCache[url] = img;
+                        // Don't revoke immediately - keep for rendering
+                        setTimeout(() => URL.revokeObjectURL(objectURL), 100);
+                        console.log('✅', type, 'loaded via blob:', url);
+                        resolve(img);
+                    };
+                    
+                    img.onerror = (error) => {
+                        URL.revokeObjectURL(objectURL);
+                        console.error('❌ Blob loading failed:', error);
+                        reject(error);
+                    };
+                    
+                    img.src = objectURL;
+                });
+                
+            } catch (fetchError) {
+                console.warn('⚠️ Fetch method failed:', fetchError.message);
+                
+                // STRATEGY 2: Direct Image with crossOrigin (Fallback 1)
+                try {
+                    console.log('🔄 Trying direct method with CORS...');
+                    return await this.loadImageDirect(url, true, type);
+                } catch (corsError) {
+                    console.warn('⚠️ CORS method failed:', corsError.message);
+                    
+                    // STRATEGY 3: Direct Image without crossOrigin (Fallback 2)
+                    // WARNING: This might cause tainted canvas, but image will display
+                    console.log('🔄 Trying direct method without CORS (last resort)...');
+                    return await this.loadImageDirect(url, false, type);
+                }
+            }
+        },
+        
+        // Helper: Load image directly with/without CORS
+        loadImageDirect(url, withCors = true, type = 'image') {
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 
-                // ⚠️ CRITICAL: Set crossOrigin SEBELUM src
-                // Ini adalah kunci utama solusi CORS!
-                img.crossOrigin = 'anonymous';
+                if (withCors) {
+                    img.crossOrigin = 'anonymous';
+                }
+                
+                let timeoutId;
                 
                 img.onload = () => {
+                    clearTimeout(timeoutId);
                     this.imageCache[url] = img;
-                    console.log('✅', type, 'loaded:', url);
+                    console.log(`✅ ${type} loaded (${withCors ? 'with' : 'without'} CORS):`, url);
                     resolve(img);
                 };
                 
                 img.onerror = (error) => {
-                    console.error('❌', type, 'load error:', url, error);
-                    
-                    // Fallback: Try without CORS
-                    console.log('🔄 Trying fallback without CORS...');
-                    const imgFallback = new Image();
-                    
-                    imgFallback.onload = () => {
-                        this.imageCache[url] = imgFallback;
-                        console.log('✅', type, 'loaded (no CORS):', url);
-                        resolve(imgFallback);
-                    };
-                    
-                    imgFallback.onerror = (fallbackError) => {
-                        console.error('❌', type, 'completely failed:', url);
-                        reject(fallbackError);
-                    };
-                    
-                    // No crossOrigin for fallback
-                    imgFallback.src = url;
+                    clearTimeout(timeoutId);
+                    console.error(`❌ Direct load failed (${withCors ? 'with' : 'without'} CORS):`, url);
+                    reject(new Error(`Failed to load ${type}: ${url}`));
                 };
                 
-                // ⚠️ CRITICAL: Set src SETELAH crossOrigin
+                // Add timeout
+                timeoutId = setTimeout(() => {
+                    if (!img.complete) {
+                        console.error('⏱️ Image load timeout:', url);
+                        reject(new Error('Image load timeout'));
+                    }
+                }, 15000); // 15 second timeout
+                
                 img.src = url;
             });
+        },
+        
+        // ========================================
+        // ✨ CRITICAL FIX: ENSURE ALL IMAGES LOADED
+        // ========================================
+        async ensureAllImagesLoaded() {
+            console.log('🔍 Checking all images...');
+            const promises = [];
+            const imageUrls = [];
+            
+            // Load all slot photos
+            for (const slot of this.selectedTemplate.slots) {
+                if (this.slotPhotos[slot.id]) {
+                    const photo = this.slotPhotos[slot.id];
+                    if (!this.imageCache[photo.full_url]) {
+                        console.log('⚠️ Loading missing photo:', photo.full_url);
+                        imageUrls.push({ url: photo.full_url, type: 'photo', slot: slot.id });
+                        promises.push(
+                            this.loadAndCacheImage(photo.full_url, 'photo')
+                                .catch(err => {
+                                    console.error('❌ Failed to load photo:', photo.full_url, err);
+                                    return null; // Don't fail the entire process
+                                })
+                        );
+                    } else {
+                        // Verify cached image is valid
+                        const cachedImg = this.imageCache[photo.full_url];
+                        if (!cachedImg.complete || cachedImg.naturalWidth === 0) {
+                            console.warn('⚠️ Cached image invalid, reloading:', photo.full_url);
+                            delete this.imageCache[photo.full_url];
+                            imageUrls.push({ url: photo.full_url, type: 'photo', slot: slot.id });
+                            promises.push(
+                                this.loadAndCacheImage(photo.full_url, 'photo')
+                                    .catch(err => {
+                                        console.error('❌ Failed to reload photo:', photo.full_url, err);
+                                        return null;
+                                    })
+                            );
+                        }
+                    }
+                }
+            }
+            
+            // Load template background/frame
+            if (this.selectedTemplate.background_url) {
+                if (!this.imageCache[this.selectedTemplate.background_url]) {
+                    console.log('⚠️ Loading missing frame:', this.selectedTemplate.background_url);
+                    imageUrls.push({ url: this.selectedTemplate.background_url, type: 'frame' });
+                    promises.push(
+                        this.loadAndCacheImage(this.selectedTemplate.background_url, 'frame')
+                            .catch(err => {
+                                console.error('❌ Failed to load frame:', this.selectedTemplate.background_url, err);
+                                return null;
+                            })
+                    );
+                } else {
+                    // Verify cached frame is valid
+                    const cachedFrame = this.imageCache[this.selectedTemplate.background_url];
+                    if (!cachedFrame.complete || cachedFrame.naturalWidth === 0) {
+                        console.warn('⚠️ Cached frame invalid, reloading:', this.selectedTemplate.background_url);
+                        delete this.imageCache[this.selectedTemplate.background_url];
+                        imageUrls.push({ url: this.selectedTemplate.background_url, type: 'frame' });
+                        promises.push(
+                            this.loadAndCacheImage(this.selectedTemplate.background_url, 'frame')
+                                .catch(err => {
+                                    console.error('❌ Failed to reload frame:', this.selectedTemplate.background_url, err);
+                                    return null;
+                                })
+                        );
+                    }
+                }
+            }
+            
+            // Wait for all images to load
+            if (promises.length > 0) {
+                console.log(`⏳ Loading ${promises.length} images...`);
+                const results = await Promise.all(promises);
+                
+                // Check if any failed
+                const failedCount = results.filter(r => r === null).length;
+                if (failedCount > 0) {
+                    console.warn(`⚠️ ${failedCount} images failed to load`);
+                }
+                
+                console.log('✅ Image loading complete!');
+                console.log('📦 Final cache size:', Object.keys(this.imageCache).length, 'images');
+            } else {
+                console.log('✅ All images already in cache and valid!');
+            }
+            
+            // Final verification
+            let allValid = true;
+            for (const slot of this.selectedTemplate.slots) {
+                if (this.slotPhotos[slot.id]) {
+                    const photo = this.slotPhotos[slot.id];
+                    const img = this.imageCache[photo.full_url];
+                    if (!img || !img.complete || img.naturalWidth === 0) {
+                        console.error('❌ INVALID IMAGE IN CACHE:', photo.full_url);
+                        allValid = false;
+                    }
+                }
+            }
+            
+            if (!allValid) {
+                throw new Error('Some images failed to load properly. Please refresh and try again.');
+            }
+            
+            console.log('✅ All images verified and ready for rendering!');
         },
         
         // Loading Modal Helper Functions
@@ -1540,6 +1716,10 @@ function editorApp() {
                 // Show loading modal
                 this.showLoadingModal('Memulai proses...', 0);
                 
+                // ✨ CRITICAL FIX: Pastikan semua gambar sudah di-load dan di-cache
+                this.updateLoadingModal('Memuat semua gambar...', 5);
+                await this.ensureAllImagesLoaded();
+                
                 // Create canvas dari template ORIGINAL size
                 const canvas = document.createElement('canvas');
                 canvas.width = this.selectedTemplate.canvas_width;
@@ -1585,6 +1765,18 @@ function editorApp() {
                         console.warn('⚠️ Image not in cache, loading:', photo.full_url);
                         img = await this.loadAndCacheImage(photo.full_url, 'photo');
                     }
+                    
+                    // ✨ VALIDATE: Pastikan image sudah loaded dengan benar
+                    if (!img.complete || img.naturalWidth === 0) {
+                        console.error('❌ Image not properly loaded:', photo.full_url);
+                        continue;
+                    }
+                    
+                    console.log('✅ Image ready for drawing:', {
+                        width: img.naturalWidth,
+                        height: img.naturalHeight,
+                        slot: slot.id
+                    });
                     
                     // Save context state
                     ctx.save();
@@ -1697,27 +1889,50 @@ function editorApp() {
                 this.updateLoadingModal('Menyiapkan download...', 95);
                 console.log('Render complete, creating blob...');
                 
-                // Convert canvas to blob dan download
-                canvas.toBlob((blob) => {
-                    this.updateLoadingModal('Download dimulai!', 100);
+                // ✨ TRY-CATCH: Handle tainted canvas error
+                try {
+                    // Test if canvas is tainted before creating blob
+                    try {
+                        ctx.getImageData(0, 0, 1, 1);
+                        console.log('✅ Canvas is clean (not tainted)');
+                    } catch (testError) {
+                        console.error('⚠️ WARNING: Canvas is tainted!', testError);
+                        throw new Error('Canvas tainted - Some images loaded without CORS. Please refresh and try again.');
+                    }
                     
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    const fileName = this.selectedLut 
-                        ? `foto-${this.selectedLut.name}-${Date.now()}.png`
-                        : `foto-${Date.now()}.png`;
-                    link.download = fileName;
-                    link.href = url;
-                    link.click();
-                    URL.revokeObjectURL(url);
-                    
-                    console.log('Download started:', fileName);
-                    
-                    // Hide modal after short delay
-                    setTimeout(() => {
-                        this.hideLoadingModal();
-                    }, 1000);
-                }, 'image/png', 1.0);
+                    // Convert canvas to blob dan download
+                    canvas.toBlob((blob) => {
+                        if (!blob) {
+                            console.error('❌ Failed to create blob');
+                            this.hideLoadingModal();
+                            alert('Gagal membuat file. Silakan coba lagi.');
+                            return;
+                        }
+                        
+                        this.updateLoadingModal('Download dimulai!', 100);
+                        
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        const fileName = this.selectedLut 
+                            ? `foto-${this.selectedLut.name}-${Date.now()}.png`
+                            : `foto-${Date.now()}.png`;
+                        link.download = fileName;
+                        link.href = url;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                        
+                        console.log('✅ Download started:', fileName);
+                        
+                        // Hide modal after short delay
+                        setTimeout(() => {
+                            this.hideLoadingModal();
+                        }, 1000);
+                    }, 'image/png', 1.0);
+                } catch (taintedError) {
+                    console.error('❌ Canvas tainted error:', taintedError);
+                    this.hideLoadingModal();
+                    alert('Terjadi kesalahan CORS. Gambar tidak dapat diproses. Silakan refresh halaman dan coba lagi.');
+                }
                 
             } catch (error) {
                 console.error('Download error:', error);
@@ -1741,6 +1956,10 @@ function editorApp() {
             try {
                 // Show loading modal
                 this.showLoadingModal('Memulai proses...', 0);
+                
+                // ✨ CRITICAL FIX: Pastikan semua gambar sudah di-load dan di-cache
+                this.updateLoadingModal('Memuat semua gambar...', 5);
+                await this.ensureAllImagesLoaded();
                 
                 // Create canvas dari template ORIGINAL size
                 const canvas = document.createElement('canvas');
@@ -1776,6 +1995,12 @@ function editorApp() {
                     if (!img) {
                         console.warn('⚠️ Image not in cache, loading:', photo.full_url);
                         img = await this.loadAndCacheImage(photo.full_url, 'photo');
+                    }
+                    
+                    // ✨ VALIDATE: Pastikan image sudah loaded dengan benar
+                    if (!img.complete || img.naturalWidth === 0) {
+                        console.error('❌ Image not properly loaded:', photo.full_url);
+                        continue;
                     }
                     
                     ctx.save();
@@ -1865,70 +2090,87 @@ function editorApp() {
                 
                 this.updateLoadingModal('Menyiapkan untuk dibagikan...', 95);
                 
-                // ========================================
-                // DIRECT SHARE - Like Web Share API Example
-                // NO download, langsung dari canvas!
-                // ========================================
-                canvas.toBlob(async (blob) => {
-                    if (!blob) {
-                        this.hideLoadingModal();
-                        alert('Gagal membuat gambar');
-                        return;
-                    }
-                    
-                    // Create File from blob
-                    const fileName = this.selectedLut 
-                        ? `memora-${this.selectedLut.name}-${Date.now()}.png`
-                        : `memora-photo-${Date.now()}.png`;
-                    
-                    const file = new File([blob], fileName, { type: 'image/png' });
-                    const files = [file];
-                    
-                    // Hide loading
-                    this.hideLoadingModal();
-                    
-                    // Check if Web Share API is supported
-                    if (!navigator.canShare) {
-                        console.log('❌ Web Share API not supported');
-                        this.showShareFallback(blob, fileName);
-                        return;
-                    }
-                    
-                    // Check if we can share these files
-                    if (!navigator.canShare({ files })) {
-                        console.log('⚠️ Cannot share files on this system');
-                        this.showShareFallback(blob, fileName);
-                        return;
-                    }
-                    
-                    // Try to share!
+                // ✨ TRY-CATCH: Handle tainted canvas error
+                try {
+                    // Test if canvas is tainted before creating blob
                     try {
-                        console.log('🚀 Sharing image...');
-                        
-                        await navigator.share({
-                            files: files,
-                            title: 'Foto dari Memora',
-                            text: 'Lihat hasil editan foto saya!'
-                        });
-                        
-                        console.log('✅ Shared!');
-                        this.showNotification('Berhasil dibagikan!', 'success');
-                        
-                    } catch (error) {
-                        console.error('❌ Share error:', error.message);
-                        
-                        // User cancelled - it's OK
-                        if (error.name === 'AbortError') {
-                            console.log('ℹ️ User cancelled');
+                        ctx.getImageData(0, 0, 1, 1);
+                        console.log('✅ Canvas is clean (not tainted)');
+                    } catch (testError) {
+                        console.error('⚠️ WARNING: Canvas is tainted!', testError);
+                        throw new Error('Canvas tainted - Some images loaded without CORS. Please refresh and try again.');
+                    }
+                    
+                    // ========================================
+                    // DIRECT SHARE - Like Web Share API Example
+                    // NO download, langsung dari canvas!
+                    // ========================================
+                    canvas.toBlob(async (blob) => {
+                        if (!blob) {
+                            this.hideLoadingModal();
+                            alert('Gagal membuat gambar');
                             return;
                         }
                         
-                        // Other errors - show fallback
-                        console.log('⚠️ Showing fallback...');
-                        this.showShareFallback(blob, fileName);
-                    }
+                        // Create File from blob
+                        const fileName = this.selectedLut 
+                            ? `memora-${this.selectedLut.name}-${Date.now()}.png`
+                            : `memora-photo-${Date.now()}.png`;
+                        
+                        const file = new File([blob], fileName, { type: 'image/png' });
+                        const files = [file];
+                        
+                        // Hide loading
+                        this.hideLoadingModal();
+                        
+                        // Check if Web Share API is supported
+                        if (!navigator.canShare) {
+                            console.log('❌ Web Share API not supported');
+                            this.showShareFallback(blob, fileName);
+                            return;
+                        }
+                        
+                        // Check if we can share these files
+                        if (!navigator.canShare({ files })) {
+                            console.log('⚠️ Cannot share files on this system');
+                            this.showShareFallback(blob, fileName);
+                            return;
+                        }
+                        
+                        // Try to share!
+                        try {
+                            console.log('🚀 Sharing image...');
+                            
+                            await navigator.share({
+                                files: files,
+                                title: 'Foto dari Memora',
+                                text: 'Lihat hasil editan foto saya!'
+                            });
+                            
+                            console.log('✅ Shared!');
+                            this.showNotification('Berhasil dibagikan!', 'success');
+                            
+                        } catch (error) {
+                            console.error('❌ Share error:', error.message);
+                            
+                            // User cancelled - it's OK
+                            if (error.name === 'AbortError') {
+                                console.log('ℹ️ User cancelled');
+                                return;
+                            }
+                            
+                            // Other errors - show fallback
+                            console.log('⚠️ Showing fallback...');
+                            this.showShareFallback(blob, fileName);
+                        }
+                        
+                    }, 'image/png', 1.0);
                     
-                }, 'image/png', 1.0);
+                } catch (taintedError) {
+                    console.error('❌ Canvas tainted error:', taintedError);
+                    this.hideLoadingModal();
+                    alert('Terjadi kesalahan CORS. Gambar tidak dapat diproses. Silakan refresh halaman dan coba lagi.');
+                }
                 
             } catch (error) {
                 console.error('💥 Error:', error);
