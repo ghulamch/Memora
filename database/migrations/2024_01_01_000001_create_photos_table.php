@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('original_filename')->nullable();
             $table->integer('file_size')->nullable();
             $table->string('mime_type')->nullable();
+            $table->timestamp('uploaded_at')->now();  
             $table->timestamps();
         });
     }
