@@ -33,6 +33,14 @@ Route::get('/api/photos/latest-single', [LandingController::class, 'apiLatestPho
 // Get available session codes
 Route::get('/api/sessions', [LandingController::class, 'getSessionCodes'])->name('api.sessions');
 
+Route::get('/id/kebijakan-privasi', function () {
+    return view('kebijakan-privasi');
+})->name('kebijakan-privasi');
+
+Route::get('/en/privacy-policy', function () {
+    return view('privacy-policy');
+})->name('privacy-policy');
+
 
 // Admin routes (protected with auth middleware)
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {

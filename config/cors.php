@@ -15,8 +15,14 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
-
+    'paths' => [
+        'api/*',
+        'sanctum/csrf-cookie',
+        'storage/*',              // ✅ ALL storage files
+        'storage/photos/*',       // ✅ Photos specifically
+        'storage/templates/*',    // ✅ Templates
+        'photos/proxy/*',         // ✅ Proxy routes
+    ],
     'allowed_methods' => ['*'],
 
     'allowed_origins' => ['*'],
@@ -25,9 +31,12 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
-
-    'max_age' => 0,
+    'max_age' => 86400,          // ✅ 24 hour cache
+    'exposed_headers' => [        // ✅ Added headers
+        'Content-Type',
+        'Content-Length',
+        'Content-Disposition',
+    ],
 
     'supports_credentials' => false,
 
