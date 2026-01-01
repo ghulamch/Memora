@@ -291,6 +291,33 @@
             </div>
         </template>
     </div>
+    <!-- Floating Slideshow Button -->
+    <div x-show="filteredPhotos.length > 0" 
+        x-cloak 
+        class="floating-slideshow-button"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="translate-y-full opacity-0"
+        x-transition:enter-end="translate-y-0 opacity-100">
+        
+        <div class="floating-button-content">
+            <!-- Icon & Info -->
+            <div class="floating-button-info">
+                <div class="floating-button-icon">
+                    <i class="fas fa-play-circle"></i>
+                </div>
+                <div class="floating-button-text">
+                    <h4>Slideshow Mode</h4>
+                    <p x-text="`${filteredPhotos.length} foto siap ditampilkan`"></p>
+                </div>
+            </div>
+            
+            <!-- Button -->
+            <button @click="startSlideshow()" class="btn-floating-slideshow">
+                <i class="fas fa-play"></i>
+                <span x-text="`Autoplay (${filteredPhotos.length})`"></span>
+            </button>
+        </div>
+    </div>
 
     <!-- Preview Modal - Modern Design -->
     <div x-show="showPreview" 
@@ -409,6 +436,9 @@ function galleryApp() {
         longPressTimer: null,
         longPressDuration: 1000,
         isLongPress: false,
+        photos: @json($photos),
+        filteredPhotos: [],
+        selectedPhotos: [],
         showAdvancedFilters: {{ request()->hasAny(['date', 'start_hour', 'end_hour', 'session_code']) ? 'true' : 'false' }},
         filterDate: '{{ request("date") }}',
         filterStartHour: '{{ request("start_hour") }}',
@@ -438,6 +468,9 @@ function galleryApp() {
                     photo.session_code.toLowerCase().includes(this.searchCode.toLowerCase())
                 );
             }
+        },
+        startSlideshow() {
+            window.location.href = `/slideshow`;
         },
         
         togglePhoto(photoId) {

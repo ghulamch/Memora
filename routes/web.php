@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\LutController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\SlideshowController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -40,7 +41,16 @@ Route::get('/id/kebijakan-privasi', function () {
 Route::get('/en/privacy-policy', function () {
     return view('privacy-policy');
 })->name('privacy-policy');
+Route::get('/slideshow', [SlideshowController::class, 'index'])
+    ->name('slideshow');
 
+// Slideshow by session code
+Route::get('/slideshow/session/{sessionCode}', [SlideshowController::class, 'bySession'])
+    ->name('slideshow.session');
+
+// Alternative: Direct access to slideshow
+Route::get('/photos/slideshow', [SlideshowController::class, 'index'])
+    ->name('photos.slideshow');
 
 // Admin routes (protected with auth middleware)
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
