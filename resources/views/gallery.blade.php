@@ -291,7 +291,7 @@
             </div>
         </template>
     </div>
-    <!-- Floating Slideshow Button -->
+    {{-- <!-- Floating Slideshow Button -->
     <div x-show="filteredPhotos.length > 0" 
         x-cloak 
         class="floating-slideshow-button"
@@ -317,7 +317,7 @@
                 <span x-text="`Autoplay (${filteredPhotos.length})`"></span>
             </button>
         </div>
-    </div>
+    </div> --}}
 
     <!-- Preview Modal - Modern Design -->
     <div x-show="showPreview" 

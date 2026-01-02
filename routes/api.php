@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\Api\LutApiController;
+use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -66,6 +67,28 @@ Route::middleware(['api.token'])->group(function () {
     // Body: { "session_code": "SESSION-20241121-001" }
     Route::post('/photos/bulk-delete-session', [PhotoController::class, 'bulkDeleteBySession']);
     
+});
+Route::prefix('settings')->group(function () {
+    // Get all settings (optionally filtered by group via query param ?group=upload)
+    Route::get('/', [SettingsController::class, 'index']);
+    
+    // Get settings by group
+    Route::get('/group/{group}', [SettingsController::class, 'getByGroup']);
+    
+    // Get specific setting
+    Route::get('/{key}', [SettingsController::class, 'show']);
+    
+    // Update setting
+    Route::put('/{key}', [SettingsController::class, 'update']);
+    
+    // Delete setting
+    Route::delete('/{key}', [SettingsController::class, 'destroy']);
+    
+    // Batch update
+    Route::post('/batch', [SettingsController::class, 'batchUpdate']);
+    
+    // Clear cache
+    Route::post('/clear-cache', [SettingsController::class, 'clearCache']);
 });
 
 Route::prefix('luts')->name('api.luts.')->group(function () {

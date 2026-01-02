@@ -33,6 +33,33 @@ return new class extends Migration
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'key' => 'session_gap_minutes',
+                'value' => '5',
+                'type' => 'integer',
+                'group' => 'general',
+                'description' => 'Gap waktu (menit) untuk session code yang sama. Jika foto upload dalam gap ini, pakai session code yang sama.',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'key' => 'app_name',
+                'value' => 'Memora Photo Booth',
+                'type' => 'string',
+                'group' => 'general',
+                'description' => 'Nama aplikasi',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'key' => 'max_upload_size_mb',
+                'value' => '10',
+                'type' => 'integer',
+                'group' => 'general',
+                'description' => 'Maximum upload size dalam MB',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
     }
 

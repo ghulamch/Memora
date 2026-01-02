@@ -76,7 +76,7 @@ class PhotoController extends Controller
     private function generateSessionCode()
     {
         $today = Carbon::today()->format('Ymd');
-        $threeMinutesAgo = Carbon::now()->subMinutes(3); // Gap 3 menit
+        $threeMinutesAgo = Carbon::now()->subMinutes(4); // Gap 3 menit
 
         // Cari foto terakhir hari ini
         $lastPhoto = Photo::whereDate('created_at', Carbon::today())
@@ -85,7 +85,7 @@ class PhotoController extends Controller
 
         // Jika tidak ada foto hari ini, mulai dari session 1
         if (!$lastPhoto) {
-            return "SESSION-{$today}-001";
+            return "{$today}-001";
         }
 
         // Jika foto terakhir < 3 menit yang lalu, gunakan session code yang sama
@@ -99,9 +99,9 @@ class PhotoController extends Controller
         $lastSessionNumber = isset($matches[1]) ? (int)$matches[1] : 0;
         $newSessionNumber = str_pad($lastSessionNumber + 1, 3, '0', STR_PAD_LEFT);
 
-        return "SESI-{$newSessionNumber}";
+        return "{$today}-{$newSessionNumber}";
     }
-
+    
     /**
      * Bulk upload photos dengan auto session code
      * 

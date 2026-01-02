@@ -21,44 +21,64 @@ class SettingsController extends Controller
     /**
      * Update specific setting
      */
-    public function update(Request $request)
+     public function update(Request $request)
     {
         $request->validate([
-            'key' => 'required|string',
+            'key' => 'required|string|exists:app_settings,key',
             'value' => 'required',
         ]);
 
-        $setting = AppSetting::where('key', $request->key)->first();
-        
-        if (!$setting) {
+        try {
+            $setting = AppSetting::where('key', $request->key)->firstOrFail();
+            
+            // Validation khusus per setting
+            $value = $request->value;
+            
+            if ($request->key === 'session_gap_minutes') {
+                $value = (int) $value;
+                if ($value < 1 || $value > 60) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Session gap must be between 1-60 minutes',
+                    ], 422);
+                }
+            }
+            
+            if ($request->key === 'max_upload_size_mb') {
+                $value = (int) $value;
+                if ($value < 1 || $value > 100) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Max upload size must be between 1-100 MB',
+                    ], 422);
+                }
+            }
+            
+            if ($request->key === 'auto_delete_days') {
+                $value = (int) $value;
+                if ($value < 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Auto delete days must be 0 or positive',
+                    ], 422);
+                }
+            }
+            
+            // Update setting
+            AppSetting::set($request->key, $value, $setting->type, $setting->group, $setting->description);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Setting updated successfully',
+                'value' => $value,
+            ]);
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Setting not found'
-            ], 404);
+                'message' => $e->getMessage(),
+            ], 500);
         }
-
-        // Handle boolean values
-        if ($setting->type === 'boolean') {
-            $value = filter_var($request->value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
-        } else {
-            $value = $request->value;
-        }
-
-        $setting->update(['value' => $value]);
-
-        // Clear cache
-        AppSetting::clearCache();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Setting updated successfully',
-            'setting' => [
-                'key' => $setting->key,
-                'value' => AppSetting::get($setting->key),
-            ]
-        ]);
     }
-
     /**
      * Toggle boolean setting
      */

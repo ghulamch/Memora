@@ -30,8 +30,8 @@ class PhotoController extends Controller
     public function destroy(Photo $photo)
     {
         try {
-            // Correct the file path (assuming $photo->file_path stores the relative path from storage/app/public)
-            $filePath = $photo->file_path; // No need to prepend 'public/'
+            // Get the correct file path (assuming file_path is relative to 'public/storage')
+            $filePath = $photo->file_path; // This should be like 'photos/filename.jpg'
 
             // Delete the file from storage
             if (Storage::disk('public')->exists($filePath)) {
@@ -48,6 +48,7 @@ class PhotoController extends Controller
                 ->with('error', 'Gagal menghapus foto: ' . $e->getMessage());
         }
     }
+
 
 
 
