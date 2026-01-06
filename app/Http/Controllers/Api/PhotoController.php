@@ -76,7 +76,7 @@ class PhotoController extends Controller
     private function generateSessionCode()
     {
         $today = Carbon::today()->format('Ymd');
-        $threeMinutesAgo = Carbon::now()->subMinutes(4); // Gap 3 menit
+        $threeMinutesAgo = Carbon::now()->subMinutes(3); // Gap 3 menit
 
         // Cari foto terakhir hari ini
         $lastPhoto = Photo::whereDate('created_at', Carbon::today())
