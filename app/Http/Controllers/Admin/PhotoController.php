@@ -61,17 +61,25 @@ class PhotoController extends Controller
 
         try {
             $photos = Photo::whereIn('id', $request->photo_ids)->get();
+            $deletedCount = 0;
 
             foreach ($photos as $photo) {
-                if (Storage::exists($photo->file_path)) {
-                    Storage::delete($photo->file_path);
+                // Get the correct file path (assuming file_path is relative to 'public/storage')
+                $filePath = $photo->file_path; // This should be like 'photos/filename.jpg'
+
+                // Delete the file from storage
+                if (Storage::disk('public')->exists($filePath)) {
+                    Storage::disk('public')->delete($filePath);
                 }
+
+                // Delete the photo record from the database
                 $photo->delete();
+                $deletedCount++;
             }
 
             return response()->json([
                 'success' => true,
-                'message' => count($request->photo_ids) . ' foto berhasil dihapus',
+                'message' => $deletedCount . ' foto berhasil dihapus',
             ]);
         } catch (\Exception $e) {
             return response()->json([

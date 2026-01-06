@@ -3,8 +3,12 @@
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\Api\LutApiController;
-use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use App\Http\Middleware\ApiTokenAuth;
+
+
 
 /*
 |--------------------------------------------------------------------------
@@ -12,8 +16,8 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | Session code otomatis dibuat berdasarkan gap waktu upload:
-| - Foto dalam 3 menit → Session code yang sama
-| - Foto setelah >3 menit → Session code baru (increment)
+| - Foto dalam 3 menit â†’ Session code yang sama
+| - Foto setelah >3 menit â†’ Session code baru (increment)
 |
 */
 
@@ -29,6 +33,33 @@ Route::middleware(['api.token'])->group(function () {
     
     // Bulk upload photos (semua foto dapat session code yang sama)
     Route::post('/photos/bulk-upload', [PhotoController::class, 'bulkUpload']);
+
+// Test route - untuk debug
+Route::post('/test-upload', function(Request $request) {
+    Log::info('=== TEST UPLOAD START ===');
+    Log::info('Has file: ' . ($request->hasFile('photo') ? 'YES' : 'NO'));
+    
+    if ($request->hasFile('photo')) {
+        $file = $request->file('photo');
+        Log::info('File info:', [
+            'name' => $file->getClientOriginalName(),
+            'size' => $file->getSize(),
+            'mime' => $file->getMimeType(),
+            'extension' => $file->getClientOriginalExtension(),
+            'is_valid' => $file->isValid(),
+        ]);
+    }
+    
+    return response()->json([
+        'test' => 'success',
+        'has_file' => $request->hasFile('photo'),
+        'file_info' => $request->hasFile('photo') ? [
+            'name' => $request->file('photo')->getClientOriginalName(),
+            'size' => $request->file('photo')->getSize(),
+            'mime' => $request->file('photo')->getMimeType(),
+        ] : null
+    ], 201);
+});
     
     
     // ========================================
@@ -68,28 +99,6 @@ Route::middleware(['api.token'])->group(function () {
     Route::post('/photos/bulk-delete-session', [PhotoController::class, 'bulkDeleteBySession']);
     
 });
-Route::prefix('settings')->group(function () {
-    // Get all settings (optionally filtered by group via query param ?group=upload)
-    Route::get('/', [SettingsController::class, 'index']);
-    
-    // Get settings by group
-    Route::get('/group/{group}', [SettingsController::class, 'getByGroup']);
-    
-    // Get specific setting
-    Route::get('/{key}', [SettingsController::class, 'show']);
-    
-    // Update setting
-    Route::put('/{key}', [SettingsController::class, 'update']);
-    
-    // Delete setting
-    Route::delete('/{key}', [SettingsController::class, 'destroy']);
-    
-    // Batch update
-    Route::post('/batch', [SettingsController::class, 'batchUpdate']);
-    
-    // Clear cache
-    Route::post('/clear-cache', [SettingsController::class, 'clearCache']);
-});
 
 Route::prefix('luts')->name('api.luts.')->group(function () {
     
@@ -124,7 +133,7 @@ Route::get('/health', function () {
 
 /*
 |--------------------------------------------------------------------------
-| 📖 Contoh Penggunaan API
+| ðŸ“– Contoh Penggunaan API
 |--------------------------------------------------------------------------
 |
 | Headers untuk semua request (kecuali /health):

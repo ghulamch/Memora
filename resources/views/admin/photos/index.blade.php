@@ -52,16 +52,35 @@
     <div class="photos-grid">
         @forelse($photos as $photo)
         <div class="photo-card" :class="selectedPhotos.includes({{ $photo->id }}) ? 'selected' : ''">
+            <!-- Checkbox (tetap ada untuk aksesibilitas) -->
             <div class="photo-checkbox">
                 <input 
                     type="checkbox" 
                     :checked="selectedPhotos.includes({{ $photo->id }})"
                     @change="togglePhoto({{ $photo->id }})"
+                    id="photo-{{ $photo->id }}"
                 >
             </div>
 
-            <div class="photo-preview">
-                <img src="{{ $photo->full_url }}" alt="Photo {{ $photo->id }}" loading="lazy">
+            <!-- Preview Area - Clickable untuk select -->
+            <div class="photo-preview" @click="togglePhoto({{ $photo->id }})" style="cursor: pointer;">
+                <!-- Loading Skeleton -->
+                <div class="photo-skeleton"></div>
+                
+                <!-- Actual Image with Lazy Loading -->
+                <img 
+                    data-src="{{ $photo->full_url }}" 
+                    alt="Photo {{ $photo->id }}" 
+                    class="lazy-image"
+                    @load="$event.target.classList.add('loaded')"
+                >
+                
+                <!-- Selection Overlay -->
+                <div class="photo-overlay" x-show="selectedPhotos.includes({{ $photo->id }})">
+                    <div class="overlay-checkmark">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                </div>
             </div>
 
             <div class="photo-details">
@@ -153,5 +172,30 @@ function photosApp() {
         }
     }
 }
+
+// Lazy Loading Implementation
+document.addEventListener('DOMContentLoaded', function() {
+    const imageObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                const src = img.getAttribute('data-src');
+                
+                if (src) {
+                    img.src = src;
+                    img.removeAttribute('data-src');
+                    observer.unobserve(img);
+                }
+            }
+        });
+    }, {
+        rootMargin: '50px' // Load images 50px before they enter viewport
+    });
+
+    // Observe all lazy images
+    document.querySelectorAll('.lazy-image').forEach(img => {
+        imageObserver.observe(img);
+    });
+});
 </script>
 @endpush
